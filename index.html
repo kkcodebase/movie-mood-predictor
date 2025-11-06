@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MoodPlay+ (Lite)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: linear-gradient(to right, #e0f7fa, #ffe0b2); font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    h1 { font-weight: 700; color: #1a237e; text-shadow: 1px 1px 2px rgba(0,0,0,0.1); }
+    .card { border-radius: 15px; background-color: #ffffffcc; }
+    .suggestion-card { transition: transform 0.2s, background-color 0.2s; cursor: pointer; }
+    .suggestion-card:hover { transform: scale(1.05); box-shadow: 0 5px 15px rgba(0,0,0,0.2); background-color: #e3f2fd; }
+    .movie-title { font-weight: 600; font-size: 1.1rem; color: #0d47a1; }
+    input, select, textarea { border-radius: 10px; border: 1px solid #90caf9; }
+    .small-muted { font-size: 0.85rem; color: #555; }
+  </style>
+</head>
+<body>
+<div class="container py-5">
+  <h1 class="text-center mb-5">🎬 MoodPlay+</h1>
+
+  <div class="card shadow-sm p-4 mb-5">
+    <h4 class="mb-3">Analyze a Movie Review</h4>
+    <div class="row g-2">
+      <div class="col-md-4"><input id="username" class="form-control" placeholder="Username (e.g., guest)"></div>
+      <div class="col-md-4"><input id="movie" class="form-control" placeholder="Movie name"></div>
+      <div class="col-md-4"><button class="btn btn-primary w-100" onclick="analyze()">Analyze</button></div>
+    </div>
+    <textarea id="review" class="form-control mt-3" rows="3" placeholder="Paste a short review here"></textarea>
+  </div>
+
+  <div id="result" class="mb-3"></div>
+  <div id="personalized" class="mb-5"></div>
+
+  <div class="card shadow-sm p-4 mb-5">
+    <h4 class="mb-3">Get Movie Suggestions Based on Mood</h4>
+    <div class="d-flex gap-2 mb-3">
+      <select id="mood" class="form-select">
+        <option value="">Select Your Mood</option>
+        <option value="happy">Happy</option>
+        <option value="sad">Sad</option>
+        <option value="relaxed">Relaxed</option>
+      </select>
+      <button class="btn btn-warning" onclick="getSuggestions()">Suggest Movies</button>
+    </div>
+    <div id="suggestions" class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3"></div>
+  </div>
+
+  <div class="card shadow-sm p-4 mb-5">
+    <h4 class="mb-3">Your Watchlist</h4>
+    <button class="btn btn-success mb-3" onclick="viewWatchlist()">View</button>
+    <ul id="watchlist" class="list-group"></ul>
+  </div>
+</div>
+
+<script>
+  const API_URL = "https://gaxl5h0qv3.execute-api.us-east-1.amazonaws.com/dev/sentiment";
+  let lastSentiment = null;
+
+  async function analyze() {
+    const username = document.getElementById('username').value || 'guest';
+    const movie = document.getElementById('movie').value || 'Unknown';
+    const review = document.getElementById('review').value;
+
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, movie, review, action: 'analyze'})
+    });
+    const data = await res.json();
+    lastSentiment = data.sentiment;
+
+    // show sentiment & saved status
+    let savedText = '';
+    if (data.saved_review) {
+      savedText = `<div class="small-muted">✅ Review saved </div>`;
+    } else {
+      savedText = `<div class="small-muted">⚠️ No review given </div>`;
+    }
+
+    document.getElementById('result').innerHTML = `
+      <div class="card p-3 shadow-sm text-center bg-light">
+        <h5>Sentiment: <span class="badge bg-info">${data.sentiment || '-'}</span></h5>
+        ${savedText}
+        <p class="mt-2 mb-1">${data.message || ''}</p>
+      </div>`;
+
+    // show personalized suggestions (if any)
+    const personalizedDiv = document.getElementById('personalized');
+    personalizedDiv.innerHTML = '';
+    if (data.personalized_suggestions && data.personalized_suggestions.length > 0) {
+      personalizedDiv.innerHTML = `<h4>🎯 Personalized Suggestions</h4>
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3 mt-2" id="personalized-list"></div>`;
+      const container = document.getElementById('personalized-list');
+      data.personalized_suggestions.forEach(movieObj => {
+        const div = document.createElement('div');
+        div.className = 'col';
+        div.innerHTML = `
+          <div class="card suggestion-card h-100 shadow-sm p-3">
+            <div class="movie-title mb-2">${movieObj.title}</div>
+            <button class="btn btn-sm btn-primary" onclick="addToWatchlist('${movieObj.title}')">Add to Watchlist</button>
+          </div>`;
+        container.appendChild(div);
+      });
+    }
+  }
+
+  async function viewWatchlist() {
+    const username = document.getElementById('username').value || 'guest';
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, action: 'view'})
+    });
+    const data = await res.json();
+    const ul = document.getElementById('watchlist');
+    ul.innerHTML = '';
+    (data.watchlist || []).forEach(m => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item';
+      li.textContent = m;
+      ul.appendChild(li);
+    });
+  }
+
+  async function getSuggestions() {
+    const username = document.getElementById('username').value || 'guest';
+    const mood = document.getElementById('mood').value;
+    if (!mood) { alert("Please select a mood!"); return; }
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, mood, action: 'suggest'})
+    });
+    const data = await res.json();
+    const container = document.getElementById('suggestions');
+    container.innerHTML = '';
+    (data.suggestions || []).forEach(movieObj => {
+      const div = document.createElement('div');
+      div.className = 'col';
+      div.innerHTML = `
+        <div class="card suggestion-card h-100 shadow-sm p-3">
+          <div class="movie-title mb-2">${movieObj.title}</div>
+          <button class="btn btn-sm btn-primary" onclick="addToWatchlist('${movieObj.title}')">Add to Watchlist</button>
+        </div>`;
+      container.appendChild(div);
+    });
+  }
+
+  async function addToWatchlist(movie) {
+    const username = document.getElementById('username').value || 'guest';
+    await fetch(API_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, movie, action: 'add'})
+    });
+    alert(`Added "${movie}" to your watchlist!`);
+    viewWatchlist();
+  }
+</script>
+</body>
+</html>

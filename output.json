@@ -1,0 +1,1 @@
+{"statusCode": 200, "headers": {"Access-Control-Allow-Origin": "*"}, "body": "{\"username\": \"guest\", \"movie\": \"Unknown\", \"sentiment\": \"neutral\", \"message\": \"Your review of 'Unknown' seems neutral!\"}"}
